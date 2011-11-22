@@ -54,11 +54,8 @@ int main(void) {
         struct sockaddr_in6 sa;
         socklen_t len = sizeof(struct sockaddr);
         char hostname[256];
-
-        int listener, client;
-
+        int listener, client, i;
         pthread_t worker_th;
-        int i;
 
         memset(&hints, 0, sizeof(hints));
         hints.ai_family = AF_INET6;
