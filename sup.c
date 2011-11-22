@@ -100,7 +100,6 @@ int main(void) {
         /* Accept connections and pass sockets to queue */
         list_init();
         while (1) {
-                printf("Waiting for new connection...\n"); 
                 client = accept(listener, (struct sockaddr *)&sa, &len);
                 if (client < 0) {
                         perror("accept");
