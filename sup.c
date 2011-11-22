@@ -1,6 +1,8 @@
-/* sup.c
+/*
+ * sup.c
  * Multi-threaded chat server
  * Author: Eugene Ma 
+ * http://github.com/edma2
  */
 #include <stdio.h>
 #include <arpa/inet.h>
