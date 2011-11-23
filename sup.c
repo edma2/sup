@@ -211,14 +211,13 @@ void list_delete(int sock) {
                         break;
                 prev = p;
         }
-        /* Not found! */
-        if (p == NULL)
-                return;
-        if (p == list.head)
-                list.head = p->next;
-        else 
-                prev->next = p->next;
-        free(p);
+        if (p != NULL) {
+                if (p == list.head)
+                        list.head = p->next;
+                else
+                        prev->next = p->next;
+                free(p);
+        }
         pthread_mutex_unlock(&list.mutex);
 }
 
