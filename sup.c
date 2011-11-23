@@ -46,10 +46,10 @@ static int queue_size(void);
 void list_init(void);
 void list_delete(int sock);
 Node *list_append(int sock);
-int list_broadcast(char *buf, int len);
+int list_broadcast(char *buf, int len, int except);
 
 void *run(void *arg);
-void do_work(int client);
+void chat_loop(int client);
 
 void logger(const char *format, ...) {
         va_list ap;
@@ -222,11 +222,13 @@ void list_delete(int sock) {
         pthread_mutex_unlock(&list.mutex);
 }
 
-int list_broadcast(char *buf, int len) {
+int list_broadcast(char *buf, int len, int except) {
         Node *p;
 
         pthread_mutex_lock(&list.mutex);
         for (p = list.head; p != NULL; p = p->next) {
+                if (p->sock == except)
+                        continue;
                 if (write(p->sock, buf, len) != len)
                         return -1;
         }
@@ -241,30 +243,30 @@ void *run(void *arg) {
         while (1) {
                 client = queue_get();
                 list_append(client);
-                do_work(client);
+                chat_loop(client);
                 list_delete(client);
                 close(client);
         }
         return NULL;
 }
 
-void do_work(int client) {
+void chat_loop(int client) {
         char buf[1024];
-        int seen;
+        int bytes_read;
 
         while (1) {
-                seen = read(client, buf, sizeof(buf)-1);
-                if (seen < 0) {
+                bytes_read = read(client, buf, sizeof(buf)-1);
+                if (bytes_read < 0) {
                         perror("read");
                         break;
                 } 
-                if (!seen) {
+                if (!bytes_read) {
                         logger("Client closed connection!");
                         break;
                 }
-                buf[seen] = '\0';
-                /* Broadcast message to all clients */
-                if (list_broadcast(buf, seen+1) < 0) {
+                buf[bytes_read] = '\0';
+                /* Broadcast message to other clients */
+                if (list_broadcast(buf, bytes_read+1, client) < 0) {
                         perror("write");
                         break;
                 }
