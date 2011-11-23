@@ -53,11 +53,12 @@ void do_work(int client);
 
 void logger(const char *format, ...) {
         va_list ap;
+
         va_start(ap, format);
         fprintf(stderr, "sup: ");
-        vfprintf (stderr, format, ap);
-        va_end (ap);
-        fprintf (stderr, "\n");
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+        fprintf(stderr, "\n");
 }
 
 int main(int argc, char *argv[]) {
