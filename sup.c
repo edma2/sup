@@ -45,29 +45,36 @@ static int queue_size(void);
 void list_init(void);
 void list_delete(int sock);
 Node *list_append(int sock);
+int list_broadcast(char *buf, int len);
 
 void *run(void *arg);
 void do_work(int client);
 
-int main(void) {
+int main(int argc, char *argv[]) {
         struct addrinfo *res, *ap, hints;
-        struct sockaddr_in6 sa;
+        struct sockaddr sa;
         socklen_t len = sizeof(struct sockaddr);
         char hostname[256];
+        int family;
         int listener, client, i;
         pthread_t worker_th;
+        void *src;
+
+        if (argc != 3) {
+                printf("Usage: %s <ip> <port>\n", argv[0]);
+                return -1;
+        }
 
         memset(&hints, 0, sizeof(hints));
-        hints.ai_family = AF_INET6;
         hints.ai_socktype = SOCK_STREAM;
-        if (getaddrinfo("2001:c08:3700:ffff::48b", "31337", &hints, &res)) {
+        if (getaddrinfo(argv[1], argv[2], &hints, &res)) {
                 perror("getaddrinfo");
                 return -1;
         }
         /* Bind socket to a valid socket address */
         for (ap = res; ap != NULL; ap = ap->ai_next) {
-                listener = socket(ap->ai_family, ap->ai_socktype,
-                                ap->ai_protocol);
+                family = ap->ai_family;
+                listener = socket(family, ap->ai_socktype, ap->ai_protocol);
                 if (listener < 0)
                         perror("socket");
                 else if (bind(listener, ap->ai_addr, ap->ai_addrlen) < 0)
@@ -81,10 +88,14 @@ int main(void) {
         freeaddrinfo(res);
         if (ap == NULL)
                 return -1;
+        if (family == AF_INET6)
+                printf("%s: IPv6 detected!\n", argv[0]);
+        printf("%s: listening on %s %s\n", argv[0], argv[1], argv[2]);
 
         /* Start thread pool */
         queue_init();
         for (i = 0; i < NUM_THREADS; i++) {
+                printf("%s: starting thread %d\n", argv[0], i);
                 if (pthread_create(&worker_th, NULL, run, NULL) < 0)
                         perror("pthread_create");
                 else if (pthread_detach(worker_th) < 0)
@@ -97,20 +108,20 @@ int main(void) {
         /* Accept connections and pass sockets to queue */
         list_init();
         while (1) {
-                client = accept(listener, (struct sockaddr *)&sa, &len);
+                client = accept(listener, &sa, &len);
                 if (client < 0) {
                         perror("accept");
                         break;
                 }
-                if (inet_ntop(AF_INET6, &(sa.sin6_addr), hostname,
-                                        sizeof(hostname)) != NULL)
-                        printf("New connection from %s!\n", hostname); 
-                /* TODO: Send 503 */
+                src = (family == AF_INET6) ? 
+                        (void *)&((struct sockaddr_in6 *)&sa)->sin6_addr :
+                        (void *)&((struct sockaddr_in *)&sa)->sin_addr;
+                if (inet_ntop(family, src, hostname, sizeof(hostname)) != NULL)
+                        printf("New connection from %s!\n", hostname);
                 if (queue_add(client) < 0)
                         close(client);
         }
         close(listener);
-
         return 0;
 }
 
@@ -200,6 +211,19 @@ void list_delete(int sock) {
         pthread_mutex_unlock(&list.mutex);
 }
 
+int list_broadcast(char *buf, int len) {
+        Node *p;
+
+        pthread_mutex_lock(&list.mutex);
+        /* Broadcast message to all other clients */
+        for (p = list.head; p != NULL; p = p->next) {
+                if (write(p->sock, buf, len) != len)
+                        return -1;
+        }
+        pthread_mutex_unlock(&list.mutex);
+        return 0;
+}
+
 /* Fetch sockets from queue and process client requests */
 void *run(void *arg) {
         int client;
@@ -215,7 +239,6 @@ void *run(void *arg) {
 }
 
 void do_work(int client) {
-        Node *p;
         char buf[1024];
         int seen;
 
@@ -223,18 +246,17 @@ void do_work(int client) {
                 seen = read(client, buf, sizeof(buf)-1);
                 if (seen < 0) {
                         perror("read");
-                        return;
-                } else if (seen == 0) {
+                        break;
+                } 
+                if (!seen) {
                         printf("Client closed connection!\n");
-                        return;
+                        break;
                 }
                 buf[seen] = '\0';
                 /* Broadcast message to all other clients */
-                for (p = list.head; p != NULL; p = p->next) {
-                        if (write(p->sock, buf, seen+1) != seen+1) {
-                                perror("write");
-                                return;
-                        }
+                if (list_broadcast(buf, seen+1) < 0) {
+                        perror("write");
+                        break;
                 }
         }
 }
