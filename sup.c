@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <netdb.h>
@@ -50,6 +51,15 @@ int list_broadcast(char *buf, int len);
 void *run(void *arg);
 void do_work(int client);
 
+void logger(const char *format, ...) {
+        va_list ap;
+        va_start(ap, format);
+        fprintf(stderr, "sup: ");
+        vfprintf (stderr, format, ap);
+        va_end (ap);
+        fprintf (stderr, "\n");
+}
+
 int main(int argc, char *argv[]) {
         struct addrinfo *res, *ap, hints;
         struct sockaddr sa;
@@ -75,27 +85,27 @@ int main(int argc, char *argv[]) {
         for (ap = res; ap != NULL; ap = ap->ai_next) {
                 family = ap->ai_family;
                 listener = socket(family, ap->ai_socktype, ap->ai_protocol);
-                if (listener < 0)
-                        perror("socket");
-                else if (bind(listener, ap->ai_addr, ap->ai_addrlen) < 0)
-                        perror("bind");
-                else if (listen(listener, 5) < 0)
-                        perror("listen");
-                else
+                if (listener >= 0 
+                    && bind(listener, ap->ai_addr, ap->ai_addrlen) >= 0
+                    && listen(listener, 5) >= 0)
                         break;
                 close(listener);
         }
         freeaddrinfo(res);
-        if (ap == NULL)
+        if (ap == NULL) {
+                logger("unable to bind address");
                 return -1;
+        }
         if (family == AF_INET6)
-                printf("%s: IPv6 detected!\n", argv[0]);
-        printf("%s: listening on %s %s\n", argv[0], argv[1], argv[2]);
+                logger("IPv6 detected!");
+        else
+                logger("IPv4 only...");
+        logger("listening on %s %s", argv[1], argv[2]);
 
         /* Start thread pool */
         queue_init();
         for (i = 0; i < NUM_THREADS; i++) {
-                printf("%s: starting thread %d\n", argv[0], i);
+                logger("starting thread %d", i);
                 if (pthread_create(&worker_th, NULL, run, NULL) < 0)
                         perror("pthread_create");
                 else if (pthread_detach(worker_th) < 0)
@@ -117,7 +127,7 @@ int main(int argc, char *argv[]) {
                         (void *)&((struct sockaddr_in6 *)&sa)->sin6_addr :
                         (void *)&((struct sockaddr_in *)&sa)->sin_addr;
                 if (inet_ntop(family, src, hostname, sizeof(hostname)) != NULL)
-                        printf("New connection from %s!\n", hostname);
+                        logger("new connection from %s!", hostname);
                 if (queue_add(client) < 0)
                         close(client);
         }
@@ -215,7 +225,6 @@ int list_broadcast(char *buf, int len) {
         Node *p;
 
         pthread_mutex_lock(&list.mutex);
-        /* Broadcast message to all other clients */
         for (p = list.head; p != NULL; p = p->next) {
                 if (write(p->sock, buf, len) != len)
                         return -1;
@@ -249,11 +258,11 @@ void do_work(int client) {
                         break;
                 } 
                 if (!seen) {
-                        printf("Client closed connection!\n");
+                        logger("Client closed connection!");
                         break;
                 }
                 buf[seen] = '\0';
-                /* Broadcast message to all other clients */
+                /* Broadcast message to all clients except mine*/
                 if (list_broadcast(buf, seen+1) < 0) {
                         perror("write");
                         break;
