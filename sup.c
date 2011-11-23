@@ -263,7 +263,7 @@ void do_work(int client) {
                         break;
                 }
                 buf[seen] = '\0';
-                /* Broadcast message to all clients except mine*/
+                /* Broadcast message to all clients */
                 if (list_broadcast(buf, seen+1) < 0) {
                         perror("write");
                         break;
