@@ -183,11 +183,13 @@ static int queue_size(void) {
         return (QUEUE_MAX - queue.read + queue.write)%QUEUE_MAX;
 }
 
+/* Initialize synchronization variables and set head to NULL. */
 void list_init(void) {
         list.head = NULL;
         pthread_mutex_init(&list.mutex, NULL);
 }
 
+/* Append an active socket to the socket list. */
 Node *list_append(int sock) {
         Node *p;
 
@@ -202,6 +204,7 @@ Node *list_append(int sock) {
         return p;
 }
 
+/* Delete a dead socket from the socket list. */
 void list_delete(int sock) {
         Node *p, *prev;
 
@@ -221,6 +224,7 @@ void list_delete(int sock) {
         pthread_mutex_unlock(&list.mutex);
 }
 
+/* Write message to all sockets except last argument. */
 int list_broadcast(char *buf, int len, int except) {
         Node *p;
 
@@ -249,6 +253,7 @@ void *run(void *arg) {
         return NULL;
 }
 
+/* Broadcast every message received to other clients */
 void chat_loop(int client) {
         char buf[1024];
         int bytes_read;
@@ -264,7 +269,6 @@ void chat_loop(int client) {
                         break;
                 }
                 buf[bytes_read] = '\0';
-                /* Broadcast message to other clients */
                 if (list_broadcast(buf, bytes_read+1, client) < 0) {
                         perror("write");
                         break;
